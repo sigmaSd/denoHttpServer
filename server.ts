@@ -1,7 +1,10 @@
-import { serve } from "https://deno.land/std@0.92.0/http/server.ts";
+import {
+  serve,
+  ServerRequest,
+} from "https://deno.land/std@0.92.0/http/server.ts";
 
 import { walk } from "https://deno.land/std/fs/walk.ts";
-import { posix } from "https://deno.land/std@0.86.0/path/mod.ts";
+import { extname, posix } from "https://deno.land/std@0.86.0/path/mod.ts";
 import { Tar } from "https://deno.land/std@0.86.0/archive/tar.ts";
 
 const server = serve({ hostname: "0.0.0.0", port: 8080 });
@@ -23,14 +26,8 @@ for await (const request of server) {
   if (path.localPath.endsWith(".tar?download")) {
     const dir = path.localPath.replace(/.tar\?download$/, "");
     const dirTarPath = await createTar(dir);
-    const headers = new Headers();
-    headers.set("Access-Control-Allow-Origin", "*");
-
-    request.respond({
-      status: 200,
-      headers,
-      body: await Deno.readFile(dirTarPath),
-    });
+    const resp = await serveFile(request, dirTarPath);
+    request.respond(resp);
   } // from the browser
   else {
     try {
@@ -40,10 +37,8 @@ for await (const request of server) {
         const response = { status: 200, body: bodyContent };
         request.respond(response);
       } else {
-        request.respond({
-          status: 200,
-          body: await Deno.readFile(path.localPath),
-        });
+        const resp = await serveFile(request, path.localPath);
+        request.respond(resp);
       }
     } catch {
       request.respond({ status: 400 });
@@ -96,4 +91,55 @@ async function createTar(dir: string): Promise<string> {
   await Deno.copy(tar.getReader(), writer);
   writer.close();
   return dirTarPath;
+}
+
+async function serveFile(
+  req: ServerRequest,
+  filePath: string,
+): Promise<{
+  status: number;
+  body: Deno.File;
+  headers: Headers;
+}> {
+  const MEDIA_TYPES: Record<string, string> = {
+    ".md": "text/markdown",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".json": "application/json",
+    ".map": "application/json",
+    ".txt": "text/plain",
+    ".ts": "text/typescript",
+    ".tsx": "text/tsx",
+    ".js": "application/javascript",
+    ".jsx": "text/jsx",
+    ".gz": "application/gzip",
+    ".css": "text/css",
+    ".wasm": "application/wasm",
+    ".mjs": "application/javascript",
+  };
+
+  /** Returns the content-type based on the extension of a path. */
+  function contentType(path: string): string | undefined {
+    return MEDIA_TYPES[extname(path)];
+  }
+
+  const [file, fileInfo] = await Promise.all([
+    Deno.open(filePath),
+    Deno.stat(filePath),
+  ]);
+  const headers = new Headers();
+  headers.set("content-length", fileInfo.size.toString());
+  const contentTypeValue = contentType(filePath);
+  if (contentTypeValue) {
+    headers.set("content-type", contentTypeValue);
+  }
+  req.done.then(() => {
+    file.close();
+  });
+
+  return {
+    status: 200,
+    body: file,
+    headers,
+  };
 }
