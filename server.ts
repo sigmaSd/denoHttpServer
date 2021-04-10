@@ -29,20 +29,24 @@ for await (const request of server) {
     request.respond({
       status: 200,
       headers,
-      body: Deno.readTextFileSync(dirTarPath),
+      body: await Deno.readTextFile(dirTarPath),
     });
   } // from the browser
   else {
-    const type = await Deno.stat(path.localPath);
-    if (type.isDirectory) {
-      const bodyContent = await writeToPage(path);
-      const response = { status: 200, body: bodyContent };
-      request.respond(response);
-    } else {
-      request.respond({
-        status: 200,
-        body: Deno.readTextFileSync(path.localPath),
-      });
+    try {
+      const type = await Deno.stat(path.localPath);
+      if (type.isDirectory) {
+        const bodyContent = await writeToPage(path);
+        const response = { status: 200, body: bodyContent };
+        request.respond(response);
+      } else {
+        request.respond({
+          status: 200,
+          body: await Deno.readTextFile(path.localPath),
+        });
+      }
+    } catch {
+      request.respond({ status: 400 });
     }
   }
 }
@@ -70,7 +74,7 @@ async function writeToPage(
     }
   }
 
-  const index = Deno.readTextFileSync("./index.html");
+  const index = await Deno.readTextFile("./index.html");
   const end = "</body></html>";
 
   return `${index}<ul>${bodyContent.join("<br/>")}</ul>${end}`;
