@@ -16,6 +16,7 @@ for await (const request of server) {
   // make path local
   const path: string = "." + request.url;
 
+  // from the frontend
   if (path.endsWith(".tar?download")) {
     const dir = path.substring(0, request.url.length - 12);
     const dirTarPath = await serveTarDir(dir);
@@ -27,7 +28,8 @@ for await (const request of server) {
       headers,
       body: Deno.readTextFileSync(dirTarPath),
     });
-  } else {
+  } // from the browser
+  else {
     const type = await Deno.stat(path);
     if (type.isDirectory) {
       const bodyContent = await writeToPage(path);
@@ -46,27 +48,29 @@ async function writeToPage(path: string): Promise<string> {
   for await (const entry of Deno.readDir(path)) {
     const entryPath = path + (path == "./" ? "" : "/") + entry.name;
     const type = await Deno.stat(entryPath);
+    const name = posix.basename(entryPath);
+
     if (type.isDirectory) {
       bodyContent.push(
-        `<li><a href=${entryPath}>${entryPath}</a>  <button OnClick=download("${entryPath}");>download</button></li>`,
+        `<li><a href=${entryPath}>${name}</a>  <button OnClick=download("${name}");>download</button></li>`,
       );
     } else {
       // file
-      bodyContent.push(`<li><a href=${entryPath}>${entryPath}</a></li>`);
+      bodyContent.push(`<li><a href=${entryPath}>${name}</a></li>`);
     }
   }
 
   const index = Deno.readTextFileSync("./index.html");
   const end = "</body></html>";
 
-  return `${index}<ul>${bodyContent.join("\n")}</ul>${end}`;
+  return `${index}<ul>${bodyContent.join("<br/>")}</ul>${end}`;
 }
 
 async function serveTarDir(dir: string): Promise<string> {
   const tar = new Tar();
 
   for await (const entry of walk(dir)) {
-    await tar.append(posix.basename(entry.path), {
+    await tar.append(entry.path, {
       filePath: entry.path,
     });
   }
