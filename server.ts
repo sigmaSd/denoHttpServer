@@ -14,12 +14,15 @@ for await (const request of server) {
   }
 
   // make path local
-  const path: string = "." + request.url;
+  const path = {
+    localPath: "." + request.url,
+    webPath: (!request.url.endsWith("/")) ? request.url + "/" : request.url,
+  };
 
   // from the frontend
-  if (path.endsWith(".tar?download")) {
-    const dir = path.substring(0, request.url.length - 12);
-    const dirTarPath = await serveTarDir(dir);
+  if (path.localPath.endsWith(".tar?download")) {
+    const dir = path.localPath.replace(/.tar\?download$/, "");
+    const dirTarPath = await createTar(dir);
     const headers = new Headers();
     headers.set("Access-Control-Allow-Origin", "*");
 
@@ -30,27 +33,34 @@ for await (const request of server) {
     });
   } // from the browser
   else {
-    const type = await Deno.stat(path);
+    const type = await Deno.stat(path.localPath);
     if (type.isDirectory) {
       const bodyContent = await writeToPage(path);
       const response = { status: 200, body: bodyContent };
       request.respond(response);
     } else {
-      request.respond({ status: 200, body: Deno.readTextFileSync(path) });
+      request.respond({
+        status: 200,
+        body: Deno.readTextFileSync(path.localPath),
+      });
     }
   }
 }
 
 /// Assumption: initial path must be a dir
-async function writeToPage(path: string): Promise<string> {
+async function writeToPage(
+  path: { localPath: string; webPath: string },
+): Promise<string> {
   const bodyContent: string[] = [];
+  if (path.webPath != "/") {
+    bodyContent.push(`<li><a href="${path.webPath}..">../</a></li>`);
+  }
 
-  for await (const entry of Deno.readDir(path)) {
-    const entryPath = path + (path == "./" ? "" : "/") + entry.name;
-    const type = await Deno.stat(entryPath);
+  for await (const entry of Deno.readDir(path.localPath)) {
+    const entryPath = path.webPath + entry.name;
     const name = posix.basename(entryPath);
 
-    if (type.isDirectory) {
+    if (entry.isDirectory) {
       bodyContent.push(
         `<li><a href=${entryPath}>${name}</a>  <button OnClick=download("${name}");>download</button></li>`,
       );
@@ -66,7 +76,7 @@ async function writeToPage(path: string): Promise<string> {
   return `${index}<ul>${bodyContent.join("<br/>")}</ul>${end}`;
 }
 
-async function serveTarDir(dir: string): Promise<string> {
+async function createTar(dir: string): Promise<string> {
   const tar = new Tar();
 
   for await (const entry of walk(dir)) {
