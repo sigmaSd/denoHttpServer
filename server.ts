@@ -13,8 +13,8 @@ for await (const request of server) {
     continue;
   }
 
-  // make path local
   const path = {
+    // make path local
     localPath: "." + request.url,
     webPath: (!request.url.endsWith("/")) ? request.url + "/" : request.url,
   };
@@ -29,7 +29,7 @@ for await (const request of server) {
     request.respond({
       status: 200,
       headers,
-      body: await Deno.readTextFile(dirTarPath),
+      body: await Deno.readFile(dirTarPath),
     });
   } // from the browser
   else {
@@ -42,7 +42,7 @@ for await (const request of server) {
       } else {
         request.respond({
           status: 200,
-          body: await Deno.readTextFile(path.localPath),
+          body: await Deno.readFile(path.localPath),
         });
       }
     } catch {
